@@ -7,9 +7,9 @@ st.set_page_config(page_title="Анализ расходов (Уфа)", page_ico
 
 st.title("📊 Твой личный финансовый аналитик (Уфа)")
 
-# Словарь с рекомендациями для каждой категории
+# Словарь с рекомендациями
 RECOMMENDATIONS = {
-    "Еда": {
+    "Кафе и рестораны": {
         "text": "Скидка 15% на обед в ресторане «Вкусно — и точка» по студенческому билету.",
         "link": "https://example.com/vkusno-i-tochka-student",
         "link_text": "Посмотреть условия скидки",
@@ -21,15 +21,32 @@ RECOMMENDATIONS = {
         "link_text": "Где купить карту «Алга»",
         "instruction": "Карту можно купить у кондукторов в автобусах «Башавтотранс» или в магазинах сети «Байрам». Проезд по ней значительно выгоднее."
     },
-    "Развлечения": {
+    "Хобби и развлечения": {
         "text": "Скидка 20% на билеты в кинотеатр «Синема Парк» (ТРК «Галерея АРТ») по промокоду.",
         "link": "https://example.com/sinema-promo",
         "link_text": "Забрать промокод",
         "instruction": "Введите промокод STUDENT20 при покупке билета онлайн."
+    },
+    "Супермаркеты": {
+        "text": "Студенческая скидка 10% по вторникам в сети супермаркетов «Байрам».",
+        "link": "https://example.com/bayram-student",
+        "link_text": "Узнать подробности",
+        "instruction": "Предъявите студенческий билет на кассе перед оплатой."
+    },
+    "Одежда и обувь": {
+        "text": "Скидка 15% на весь ассортимент в магазине «SNEAKER STORE» (ТРК «Июнь»).",
+        "link": "https://example.com/sneaker-store-promo",
+        "link_text": "Получить скидку",
+        "instruction": "Скажите на кассе промокод STUDENT_UFA."
+    },
+    "ЖКХ и связь": {
+        "text": "Специальный молодежный тариф от МегаФон: больше гигабайт за меньшие деньги.",
+        "link": "https://example.com/megafon-student",
+        "link_text": "Перейти на тариф",
+        "instruction": "Оформите переход в личном кабинете или в салоне связи."
     }
 }
 
-# Загружаем медианы для Уфы
 @st.cache_data
 def load_medians():
     df = pd.read_csv("medians.csv")
@@ -52,7 +69,8 @@ if uploaded_file is not None:
         user_yearly = df.groupby('Категория')['Сумма'].sum().reset_index()
         user_yearly.columns = ['category', 'user_year_total']
         
-        yearly_comparison = pd.merge(user_yearly, city_medians, on='category', how='left')
+        # Соединяем и заполняем пустоты нулями, если пользователь не тратил на какую-то категорию
+        yearly_comparison = pd.merge(user_yearly, city_medians, on='category', how='left').fillna(0)
         yearly_comparison['median_year_total'] = yearly_comparison['median'] * 12
         
         fig_year = px.bar(yearly_comparison, x='category', y=['user_year_total', 'median_year_total'], 
@@ -75,8 +93,11 @@ if uploaded_file is not None:
         user_month = last_month_df.groupby('Категория')['Сумма'].sum().reset_index()
         user_month.columns = ['category', 'user_month_total']
         
-        month_comparison = pd.merge(user_month, city_medians, on='category', how='left')
-        month_comparison['deviation_%'] = ((month_comparison['user_month_total'] - month_comparison['median']) / month_comparison['median']) * 100
+        month_comparison = pd.merge(user_month, city_medians, on='category', how='left').fillna(0)
+        
+        # Защита от деления на ноль
+        month_comparison['deviation_%'] = np.where(month_comparison['median'] > 0, 
+            ((month_comparison['user_month_total'] - month_comparison['median']) / month_comparison['median']) * 100, 0)
 
         categories = month_comparison['category'].tolist()
         tabs = st.tabs(categories)
@@ -86,7 +107,7 @@ if uploaded_file is not None:
                 cat_data = month_comparison[month_comparison['category'] == category].iloc[0]
                 
                 col1, col2, col3 = st.columns(3)
-                col1.metric(label=f"Твои траты на {category}", value=f"{cat_data['user_month_total']} ₽")
+                col1.metric(label=f"Твои траты", value=f"{cat_data['user_month_total']} ₽")
                 col2.metric(label=f"Медиана по Уфе", value=f"{cat_data['median']} ₽")
                 col3.metric(label="Отклонение", value=f"{cat_data['deviation_%']:.0f}%")
 
@@ -105,7 +126,6 @@ if uploaded_file is not None:
                 if cat_data['deviation_%'] > 30:
                     st.error(f"⚠️ **Внимание!** Ты тратишь на {cat_data['deviation_%']:.0f}% больше медианы в этой категории.")
                     
-                    # Берем рекомендацию для этой категории
                     rec = RECOMMENDATIONS.get(category)
                     
                     if rec:

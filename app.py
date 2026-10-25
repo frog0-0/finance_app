@@ -7,7 +7,6 @@ st.set_page_config(page_title="Анализ расходов (Уфа)", page_ico
 
 st.title("📊 Твой личный финансовый аналитик (Уфа)")
 
-# Словарь с рекомендациями
 RECOMMENDATIONS = {
     "Кафе и рестораны": {
         "text": "Скидка 15% на обед в ресторане «Вкусно — и точка» по студенческому билету.",
@@ -49,7 +48,11 @@ RECOMMENDATIONS = {
 
 @st.cache_data
 def load_medians():
+    # Читаем файл с медианами
     df = pd.read_csv("medians.csv")
+    # Убираем возможные пробелы в названиях колонок и категорий
+    df.columns = df.columns.str.strip()
+    df['category'] = df['category'].str.strip()
     return df[df['city'] == 'Уфа']
 
 city_medians = load_medians()
@@ -58,6 +61,10 @@ uploaded_file = st.file_uploader("Загрузи CSV с расходами (вы
 
 if uploaded_file is not None:
     df = pd.read_csv(uploaded_file)
+    
+    # Очищаем названия колонок и категорий от лишних пробелов на всякий случай
+    df.columns = df.columns.str.strip()
+    df['Категория'] = df['Категория'].str.strip()
     
     if all(col in df.columns for col in ['Дата', 'Категория', 'Сумма']):
         
@@ -69,7 +76,6 @@ if uploaded_file is not None:
         user_yearly = df.groupby('Категория')['Сумма'].sum().reset_index()
         user_yearly.columns = ['category', 'user_year_total']
         
-        # Соединяем и заполняем пустоты нулями, если пользователь не тратил на какую-то категорию
         yearly_comparison = pd.merge(user_yearly, city_medians, on='category', how='left').fillna(0)
         yearly_comparison['median_year_total'] = yearly_comparison['median'] * 12
         
@@ -95,7 +101,6 @@ if uploaded_file is not None:
         
         month_comparison = pd.merge(user_month, city_medians, on='category', how='left').fillna(0)
         
-        # Защита от деления на ноль
         month_comparison['deviation_%'] = np.where(month_comparison['median'] > 0, 
             ((month_comparison['user_month_total'] - month_comparison['median']) / month_comparison['median']) * 100, 0)
 
@@ -122,25 +127,22 @@ if uploaded_file is not None:
                                  text_auto=True)
                 st.plotly_chart(fig_cat, use_container_width=True)
 
-                # --- ЛОГИКА РЕКОМЕНДАЦИЙ ---
-                if cat_data['deviation_%'] > 30:
+                # --- ЛОГИКА РЕКОМЕНДАЦИЙ (С ЗАЩИТОЙ ОТ НУЛЕЙ) ---
+                if cat_data['median'] == 0:
+                    st.warning("⚠️ Для этой категории пока нет данных о медиане по Уфе. Мы не можем провести анализ.")
+                elif cat_data['deviation_%'] > 30:
                     st.error(f"⚠️ **Внимание!** Ты тратишь на {cat_data['deviation_%']:.0f}% больше медианы в этой категории.")
                     
                     rec = RECOMMENDATIONS.get(category)
-                    
                     if rec:
                         with st.container(border=True):
                             st.subheader("💡 Как сэкономить?")
                             st.write(rec["text"])
                             st.markdown(f"👉 **Как это работает:** {rec['instruction']}")
                             st.link_button(rec["link_text"], rec["link"])
-                    else:
-                        st.info("💡 Мы пока ищем партнеров в этой категории, скоро здесь появятся скидки!")
-                        
                 elif cat_data['deviation_%'] < 0:
                     st.success(f"✅ Отлично! Ты тратишь на {abs(cat_data['deviation_%']):.0f}% меньше медианы.")
                 else:
                     st.info("👍 Твои траты в пределах нормы.")
-
     else:
-        st.error("В файле нет колонок 'Дата', 'Категория' и 'Сумма'. Проверь формат.")
+        st.error("В файле нет колонок 'Дата', 'Категория' и 'Сумма'.")

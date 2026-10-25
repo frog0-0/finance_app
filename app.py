@@ -5,17 +5,17 @@ import plotly.express as px
 
 st.set_page_config(page_title="Анализ расходов", page_icon="📊", layout="wide")
 
-st.title("📊 Твой личный финансовый аналитик")
+st.title("📊 Твой личный финансовый аналитик (Уфа)")
+st.write("Загрузи выписку из банка, и мы посмотрим, где ты переплачиваешь по сравнению с медианой по Уфе.")
 
-city = st.selectbox("Выбери свой город:", ["Москва", "Санкт-Петербург"])
-
-# Загружаем медианы
+# Загружаем медианы для Уфы
 @st.cache_data
 def load_medians():
-    return pd.read_csv("medians.csv")
+    df = pd.read_csv("medians.csv")
+    # Оставляем только Уфу
+    return df[df['city'] == 'Уфа']
 
-medians_df = load_medians()
-city_medians = medians_df[medians_df['city'] == city]
+city_medians = load_medians()
 
 uploaded_file = st.file_uploader("Загрузи CSV с расходами (выгрузка из банка)", type=["csv"])
 
@@ -39,7 +39,7 @@ if uploaded_file is not None:
         yearly_comparison = pd.merge(user_yearly, city_medians, on='category', how='left')
         yearly_comparison['median_year_total'] = yearly_comparison['median'] * 12
         
-        # Строим общий график
+        # Строим общий график за год
         fig_year = px.bar(yearly_comparison, x='category', y=['user_year_total', 'median_year_total'], 
                           barmode='group', 
                           labels={'value': 'Сумма (руб)', 'variable': 'Тип', 'category': 'Категория'},
@@ -66,7 +66,7 @@ if uploaded_file is not None:
         month_comparison = pd.merge(user_month, city_medians, on='category', how='left')
         month_comparison['deviation_%'] = ((month_comparison['user_month_total'] - month_comparison['median']) / month_comparison['median']) * 100
 
-        # Создаем вкладки для каждой категории, которая есть у пользователя
+        # Создаем вкладки для каждой категории
         categories = month_comparison['category'].tolist()
         tabs = st.tabs(categories)
 
@@ -75,17 +75,24 @@ if uploaded_file is not None:
                 # Данные только для этой категории
                 cat_data = month_comparison[month_comparison['category'] == category].iloc[0]
                 
-                col1, col2 = st.columns(2)
+                col1, col2, col3 = st.columns(3)
                 with col1:
-                    st.metric(label=f"Траты на {category} (этот месяц)", value=f"{cat_data['user_month_total']} ₽")
+                    st.metric(label=f"Твои траты на {category}", value=f"{cat_data['user_month_total']} ₽")
                 with col2:
-                    st.metric(label=f"Медиана по городу", value=f"{cat_data['median']} ₽")
+                    st.metric(label=f"Медиана по Уфе", value=f"{cat_data['median']} ₽")
+                with col3:
+                    st.metric(label="Отклонение", value=f"{cat_data['deviation_%']:.0f}%")
+
+                # Строим ГИСТОГРАММУ (столбики) для этой категории
+                df_plot = pd.DataFrame({
+                    'Тип': ['Твои траты', 'Медиана'],
+                    'Сумма': [cat_data['user_month_total'], cat_data['median']]
+                })
                 
-                # Строим отдельный график для этой категории
-                fig_cat = px.pie(names=['Твои траты', 'Остаток до медианы'], 
-                                 values=[cat_data['user_month_total'], max(0, cat_data['median'] - cat_data['user_month_total'])],
+                fig_cat = px.bar(df_plot, x='Тип', y='Сумма', color='Тип',
                                  title=f"Сравнение по категории: {category}",
-                                 color_discrete_sequence=['#ff9999','#99ff99'])
+                                 color_discrete_map={'Твои траты': '#ff7f0e', 'Медиана': '#1f77b4'},
+                                 text_auto=True) # text_auto подпишет цифры над столбиками
                 st.plotly_chart(fig_cat, use_container_width=True)
 
                 # Выводим рекомендации

@@ -5,7 +5,7 @@ import plotly.express as px
 
 st.set_page_config(page_title="Анализ расходов (Уфа)", page_icon="📊", layout="wide")
 
-st.title("📊 Твой личный финансовый аналитик (Уфа)")
+st.title("📊 DataSmart - Твой личный финансовый аналитик")
 
 RECOMMENDATIONS = {
     "Кафе и рестораны": {
